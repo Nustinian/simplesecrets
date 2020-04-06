@@ -3,7 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const blake2b = require('blake2b')
+const bcrypt = require ("bcrypt");
+const saltRounds = 10;
  
 mongoose.connect(
 	"mongodb://localhost:27017/userdb",
@@ -53,17 +54,16 @@ app.route("/login")
 				} else if (results.length === 0) {
 					res.send({message: "No user with that username exists."});
 				} else {
-					const output = new Uint8Array(64);
-					const input = Buffer.from(req.body.password);
-					const hash = blake2b(output.length).update(input).digest("hex"); 
-					if (results.password !== hash) {
-						res.send({message: "Incorrect password."});
-					} else if (results.password === hash) {
-						res.render("secrets");
-					}
+					bcrypt.compare(req.body.password, results.password, (err, result) => {
+						if (result) {
+							res.render("secrets");
+						} else {
+							res.send({message: "Incorrect password."});
+						}
+					});
 				}
 			}
-		)
+		);
 	});
 
 app.route("/register")
@@ -80,20 +80,20 @@ app.route("/register")
 				} else if (exists) {
 					res.send({message: "User with that username already exists."});
 				} else {
-					const output = new Uint8Array(64);
-					const input = Buffer.from(req.body.password);
-					const newUser = new User ({
-						username: req.body.username,
-						password: blake2b(output.length).update(input).digest("hex")
-					});
-					newUser.save((err, results) => {
-						if (err) {
-							console.log(err);
-							res.send({error: err});
-						} else {
-							console.log("New user created.")
-							res.render("secrets");
-						}
+					bcrypt.hash(req.body.password, saltRounds, (err, hash) => {							
+						const newUser = new User ({
+							username: req.body.username,
+							password: hash
+						});
+						newUser.save((err, results) => {
+							if (err) {
+								console.log(err);
+								res.send({error: err});
+							} else {
+								console.log("New user created.")
+								res.render("secrets");
+							}
+						});
 					});
 				}
 			}
