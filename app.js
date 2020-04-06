@@ -3,9 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
-
-
+const blake2b = require('blake2b')
+ 
 mongoose.connect(
 	"mongodb://localhost:27017/userdb",
 	{
@@ -27,14 +26,8 @@ const userSchema = new mongoose.Schema({
 	password: {
 		type: String,
 		required: true,
-		minlength: 8,
-		maxlength: 32
 	}
 });
-
-const secret = process.env.DB_ENCRYPTION_SECRET
-
-userSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']});
 
 const User = mongoose.model("User", userSchema);
 
@@ -59,10 +52,15 @@ app.route("/login")
 					res.send({error: err});
 				} else if (results.length === 0) {
 					res.send({message: "No user with that username exists."});
-				} else if (results.password !== req.body.password) {
-					res.send({message: "Incorrect password."});
-				} else if (results.password === req.body.password) {
-					res.render("secrets");
+				} else {
+					const output = new Uint8Array(64);
+					const input = Buffer.from(req.body.password);
+					const hash = blake2b(output.length).update(input).digest("hex"); 
+					if (results.password !== hash) {
+						res.send({message: "Incorrect password."});
+					} else if (results.password === hash) {
+						res.render("secrets");
+					}
 				}
 			}
 		)
@@ -82,9 +80,11 @@ app.route("/register")
 				} else if (exists) {
 					res.send({message: "User with that username already exists."});
 				} else {
+					const output = new Uint8Array(64);
+					const input = Buffer.from(req.body.password);
 					const newUser = new User ({
 						username: req.body.username,
-						password: req.body.password
+						password: blake2b(output.length).update(input).digest("hex")
 					});
 					newUser.save((err, results) => {
 						if (err) {
