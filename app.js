@@ -34,9 +34,9 @@ mongoose.connect(
 );
 
 const userSchema = new mongoose.Schema({
-	username: {
-		type: String,
-	}
+	username: String,
+	password: String,
+	googleId: String
 });
 
 userSchema.plugin(passportLocalMongoose);
@@ -44,12 +44,18 @@ userSchema.plugin(findOrCreate);
 
 const User = mongoose.model("User", userSchema);
 
+const secretSchema = new mongoose.Schema({
+	secret: String
+});
+
+const Secret = mongoose.model("Secret", secretSchema);
+
 passport.use(User.createStrategy());
 
 passport.use(new GoogleStrategy({
 	clientID: process.env.GOOGLE_CLIENT_ID,
 	clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-	callbackURL: "http://ec2-13-125-244-225.ap-northeast-2.compute.amazonaws.com:3000/auth/google/secrets",
+	callbackURL: `http://${process.env.EC2_PUBLIC_DNS}:3000/auth/google/secrets`,
 	userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
 	},
 	function(accessToken, refreshToken, profile, cb) {
@@ -81,14 +87,20 @@ app.get("/auth/google",
 app.get("/auth/google/secrets",
 	passport.authenticate("google", {failureRedirect: "/login"}),
 	(req, res) => {
-		res.redirect("/secrets");
+		res.redirect("/submit");
 	}
 );
 
 
 app.get("/secrets", (req, res) => {
 	if (req.isAuthenticated()) {
-		res.render("secrets");
+		Secret.find({}, {_id: 0, __v: 0}, (err, results) => {
+			if (err) {
+				console.log(err);
+			} else {
+				res.render("secrets", {allSecrets: results});
+			}
+		});
 	} else {
 		res.redirect("/login");
 	}
@@ -139,6 +151,29 @@ app.route("/register")
 app.get("/logout", (req, res) => {
 	req.logout();
 	res.redirect("/");
+});
+
+app.get("/submit", (req, res) => {
+	if (req.isAuthenticated()) {
+		res.render("submit");
+	} else {
+		res.redirect("/login");
+	}
+});
+
+app.post("/submit", (req, res) => {
+	newSecret = new Secret({
+		secret: req.body.secret
+	});
+    newSecret.save((err) => {
+		if (err) {
+			console.log(err);
+			res.send({error: err});
+		} else {
+			console.log("Success!");
+			res.redirect("/secrets");
+		}
+	});
 });
 
 
